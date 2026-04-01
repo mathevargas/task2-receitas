@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Receitas</title>
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>Cadastro de Receita</h2>
+    <form action="/" method="get">
+        <button type="submit">Deslogar</button>
+    </form>
+</div>
+
+<form action="/receitas/salvar" method="post">
+    <input type="hidden" name="id" th:value="${receita.id}">
+
+    Nome: <input type="text" name="nome" th:value="${receita.nome}" required><br><br>
+    Descrição: <input type="text" name="descricao" th:value="${receita.descricao}" required><br><br>
+    Data: <input type="date" name="dataRegistro" th:value="${receita.dataRegistro}" required><br><br>
+    Custo: <input type="number" step="0.01" name="custo" th:value="${receita.custo}" required><br><br>
+
+    Tipo:
+    <select name="tipoReceita">
+        <option value="DOCE">Doce</option>
+        <option value="SALGADA">Salgada</option>
+    </select><br><br>
+
+    <button type="submit">Salvar</button>
+</form>
+
+<hr>
+
+<h2>Lista de Receitas</h2>
+
+<table border="1">
+    <tr>
+        <th>Nome</th>
+        <th>Descrição</th>
+        <th>Data</th>
+        <th>Custo</th>
+        <th>Tipo</th>
+        <th>Ações</th>
+    </tr>
+
+    <tr th:each="r : ${lista}">
+        <td th:text="${r.nome}"></td>
+        <td th:text="${r.descricao}"></td>
+        <td th:text="${r.dataRegistro}"></td>
+        <td th:text="'R$ ' + ${#numbers.formatDecimal(r.custo, 1, 'POINT', 2, 'COMMA')}"></td>
+        <td th:text="${r.tipoReceita}"></td>
+        <td>
+            <a th:href="@{'/receitas/editar/' + ${r.id}}">Editar</a>
+            <a th:href="@{'/receitas/excluir/' + ${r.id}}">Excluir</a>
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>

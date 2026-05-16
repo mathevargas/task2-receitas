@@ -1,0 +1,94 @@
+services:
+  db-homolog:
+    image: postgres:17
+    container_name: db-homolog
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: receitas_homolog
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Postgres
+    volumes:
+      - pgdata-homolog:/var/lib/postgresql/data
+    networks:
+      - homolog-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d receitas_homolog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app-homolog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: task2-receitas:latest
+    container_name: app-homolog
+    restart: unless-stopped
+    depends_on:
+      db-homolog:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db-homolog:5432/receitas_homolog
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: Postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_THYMELEAF_CACHE: "false"
+      SERVER_PORT: 8080
+      EMAIL: ${EMAIL:-}
+      SENHA_EMAIL: ${SENHA_EMAIL:-}
+    ports:
+      - "8080:8080"
+    networks:
+      - homolog-network
+
+  db-prod:
+    image: postgres:17
+    container_name: db-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: receitas_prod
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Postgres
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+    networks:
+      - prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d receitas_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: task2-receitas:latest
+    container_name: app-prod
+    restart: unless-stopped
+    depends_on:
+      db-prod:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db-prod:5432/receitas_prod
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: Postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_THYMELEAF_CACHE: "false"
+      SERVER_PORT: 8080
+      EMAIL: ${EMAIL:-}
+      SENHA_EMAIL: ${SENHA_EMAIL:-}
+    ports:
+      - "8081:8080"
+    networks:
+      - prod-network
+
+volumes:
+  pgdata-homolog:
+  pgdata-prod:
+
+networks:
+  homolog-network:
+  prod-network:

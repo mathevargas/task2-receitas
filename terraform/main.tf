@@ -11,11 +11,11 @@ terraform {
 
 resource "null_resource" "prepare_vm" {
   connection {
-    type        = "ssh"
-    host        = var.vm_host
-    user        = var.vm_user
-    private_key = file(var.ssh_private_key_path)
-    timeout     = "5m"
+    type     = "ssh"
+    host     = var.vm_host
+    user     = var.vm_user
+    password = var.vm_password
+    timeout  = "5m"
   }
 
   provisioner "file" {

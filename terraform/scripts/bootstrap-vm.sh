@@ -58,6 +58,47 @@ systemctl daemon-reload
 systemctl enable jenkins
 systemctl restart jenkins
 
+echo "Aguardando Jenkins iniciar..."
+sleep 40
+
+echo "Instalando Jenkins CLI..."
+JENKINS_CLI="/tmp/jenkins-cli.jar"
+
+for i in {1..20}; do
+  if curl -sSf http://localhost:8090/jnlpJars/jenkins-cli.jar -o "$JENKINS_CLI"; then
+    echo "Jenkins CLI baixado com sucesso."
+    break
+  fi
+
+  echo "Jenkins ainda nao esta pronto. Tentativa $i/20..."
+  sleep 10
+done
+
+if [ -f /var/lib/jenkins/secrets/initialAdminPassword ] && [ -f "$JENKINS_CLI" ]; then
+  JENKINS_INITIAL_PASSWORD=$(cat /var/lib/jenkins/secrets/initialAdminPassword)
+
+  echo "Instalando plugins principais do Jenkins..."
+
+  java -jar "$JENKINS_CLI" \
+    -s http://localhost:8090/ \
+    -auth admin:"$JENKINS_INITIAL_PASSWORD" \
+    install-plugin \
+    git \
+    workflow-aggregator \
+    pipeline-stage-view \
+    credentials \
+    credentials-binding \
+    junit \
+    docker-workflow \
+    -deploy || true
+
+  echo "Reiniciando Jenkins apos instalacao dos plugins..."
+  systemctl restart jenkins
+  sleep 20
+else
+  echo "Nao foi possivel instalar plugins automaticamente. Jenkins CLI ou senha inicial nao encontrados."
+fi
+
 echo "Adicionando usuario jenkins ao grupo docker..."
 usermod -aG docker jenkins || true
 
@@ -83,4 +124,12 @@ docker compose version
 echo "Status Jenkins:"
 systemctl status jenkins --no-pager || true
 
+echo "Senha inicial do Jenkins:"
+if [ -f /var/lib/jenkins/secrets/initialAdminPassword ]; then
+  cat /var/lib/jenkins/secrets/initialAdminPassword
+else
+  echo "Arquivo initialAdminPassword ainda nao encontrado."
+fi
+
 echo "Bootstrap da VM concluido."
+echo "Acesse o Jenkins em: http://IP_DA_VM:8090"

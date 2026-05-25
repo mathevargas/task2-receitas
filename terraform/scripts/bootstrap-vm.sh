@@ -2,12 +2,52 @@
 
 set -e
 
+if [ -z "${JENKINS_ADMIN_USER:-}" ] && [ -n "${JENKINS_ADMIN_USER_B64:-}" ]; then
+  JENKINS_ADMIN_USER=$(printf "%s" "$JENKINS_ADMIN_USER_B64" | base64 -d)
+fi
+
+if [ -z "${JENKINS_ADMIN_PASSWORD:-}" ] && [ -n "${JENKINS_ADMIN_PASSWORD_B64:-}" ]; then
+  JENKINS_ADMIN_PASSWORD=$(printf "%s" "$JENKINS_ADMIN_PASSWORD_B64" | base64 -d)
+fi
+
+if [ -z "${JENKINS_ADMIN_USER:-}" ] || [ -z "${JENKINS_ADMIN_PASSWORD:-}" ]; then
+  echo "JENKINS_ADMIN_USER e JENKINS_ADMIN_PASSWORD sao obrigatorios."
+  exit 1
+fi
+
+groovy_escape() {
+  printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g"
+}
+
+wait_for_jenkins() {
+  echo "Aguardando Jenkins responder na porta 8090..."
+
+  for i in {1..60}; do
+    if curl -sSf http://localhost:8090/login >/dev/null 2>&1; then
+      echo "Jenkins esta respondendo."
+      return 0
+    fi
+
+    echo "Jenkins ainda nao esta pronto. Tentativa $i/60..."
+    sleep 5
+  done
+
+  echo "Jenkins nao respondeu dentro do tempo esperado."
+  systemctl status jenkins --no-pager || true
+  exit 1
+}
+
+echo "Limpando configuracoes antigas do repositorio Jenkins, se existirem..."
+rm -f /usr/share/keyrings/jenkins-keyring.asc
+rm -f /etc/apt/sources.list.d/jenkins.list
+rm -f /etc/apt/trusted.gpg.d/jenkins*.gpg
+
 echo "Atualizando pacotes da VM..."
 apt update -y
 apt upgrade -y
 
 echo "Instalando pacotes basicos..."
-apt install -y ca-certificates curl gnupg git unzip software-properties-common apt-transport-https
+apt install -y ca-certificates curl gnupg git unzip fontconfig software-properties-common apt-transport-https
 
 echo "Instalando Java 21..."
 apt install -y openjdk-21-jdk
@@ -49,66 +89,79 @@ echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
 apt update -y
 apt install -y jenkins
 
-echo "Configurando Jenkins para porta 8090..."
-mkdir -p /etc/systemd/system/jenkins.service.d
+echo "Configurando Jenkins para porta 8090 e desativando wizard inicial..."
+systemctl stop jenkins || true
 
+mkdir -p /etc/systemd/system/jenkins.service.d
 cat > /etc/systemd/system/jenkins.service.d/override.conf <<EOF
 [Service]
 Environment="JENKINS_PORT=8090"
+Environment="JAVA_OPTS=-Djenkins.install.runSetupWizard=false"
 EOF
 
-systemctl daemon-reload
-systemctl enable jenkins
-systemctl restart jenkins
+echo "Criando usuario administrador inicial do Jenkins..."
+mkdir -p /var/lib/jenkins/init.groovy.d
 
-echo "Aguardando Jenkins iniciar..."
-sleep 40
+JENKINS_ADMIN_USER_ESCAPED=$(groovy_escape "$JENKINS_ADMIN_USER")
+JENKINS_ADMIN_PASSWORD_ESCAPED=$(groovy_escape "$JENKINS_ADMIN_PASSWORD")
 
-echo "Instalando Jenkins CLI..."
-JENKINS_CLI="/tmp/jenkins-cli.jar"
+cat > /var/lib/jenkins/init.groovy.d/01-create-admin-user.groovy <<EOF
+import hudson.security.FullControlOnceLoggedInAuthorizationStrategy
+import hudson.security.HudsonPrivateSecurityRealm
+import jenkins.model.Jenkins
 
-for i in {1..20}; do
-  if curl -sSf http://localhost:8090/jnlpJars/jenkins-cli.jar -o "$JENKINS_CLI"; then
-    echo "Jenkins CLI baixado com sucesso."
-    break
-  fi
+def instance = Jenkins.get()
+def realm = new HudsonPrivateSecurityRealm(false)
 
-  echo "Jenkins ainda nao esta pronto. Tentativa $i/20..."
-  sleep 10
-done
+if (realm.getUser('${JENKINS_ADMIN_USER_ESCAPED}') == null) {
+    realm.createAccount('${JENKINS_ADMIN_USER_ESCAPED}', '${JENKINS_ADMIN_PASSWORD_ESCAPED}')
+}
 
-if [ -f /var/lib/jenkins/secrets/initialAdminPassword ] && [ -f "$JENKINS_CLI" ]; then
-  JENKINS_INITIAL_PASSWORD=$(cat /var/lib/jenkins/secrets/initialAdminPassword)
+def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+strategy.setAllowAnonymousRead(false)
 
-  echo "Instalando plugins principais do Jenkins..."
+instance.setSecurityRealm(realm)
+instance.setAuthorizationStrategy(strategy)
+instance.save()
+EOF
 
-  java -jar "$JENKINS_CLI" \
-    -s http://localhost:8090/ \
-    -auth admin:"$JENKINS_INITIAL_PASSWORD" \
-    install-plugin \
-    git \
-    workflow-aggregator \
-    pipeline-stage-view \
-    credentials \
-    credentials-binding \
-    junit \
-    docker-workflow \
-    -deploy || true
-
-  echo "Reiniciando Jenkins apos instalacao dos plugins..."
-  systemctl restart jenkins
-  sleep 20
-else
-  echo "Nao foi possivel instalar plugins automaticamente. Jenkins CLI ou senha inicial nao encontrados."
-fi
+chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d
 
 echo "Adicionando usuario jenkins ao grupo docker..."
 usermod -aG docker jenkins || true
 
 echo "Adicionando usuario atual ao grupo docker, se existir..."
-if id "$SUDO_USER" >/dev/null 2>&1; then
+if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
   usermod -aG docker "$SUDO_USER"
 fi
+
+systemctl daemon-reload
+systemctl enable jenkins
+systemctl restart jenkins
+wait_for_jenkins
+
+echo "Instalando Jenkins CLI..."
+JENKINS_CLI="/tmp/jenkins-cli.jar"
+curl -sSf http://localhost:8090/jnlpJars/jenkins-cli.jar -o "$JENKINS_CLI"
+
+echo "Instalando plugins principais do Jenkins..."
+java -jar "$JENKINS_CLI" \
+  -s http://localhost:8090/ \
+  -auth "$JENKINS_ADMIN_USER:$JENKINS_ADMIN_PASSWORD" \
+  install-plugin \
+  git \
+  workflow-aggregator \
+  pipeline-stage-view \
+  credentials \
+  credentials-binding \
+  junit \
+  docker-workflow \
+  -deploy
+
+echo "Reiniciando Jenkins apos instalacao dos plugins..."
+rm -f /var/lib/jenkins/init.groovy.d/01-create-admin-user.groovy
+systemctl restart jenkins
+wait_for_jenkins
 
 echo "Liberando portas no firewall, se UFW estiver ativo..."
 if command -v ufw >/dev/null 2>&1; then
@@ -127,12 +180,7 @@ docker compose version
 echo "Status Jenkins:"
 systemctl status jenkins --no-pager || true
 
-echo "Senha inicial do Jenkins:"
-if [ -f /var/lib/jenkins/secrets/initialAdminPassword ]; then
-  cat /var/lib/jenkins/secrets/initialAdminPassword
-else
-  echo "Arquivo initialAdminPassword ainda nao encontrado."
-fi
-
 echo "Bootstrap da VM concluido."
-echo "Acesse o Jenkins em: http://IP_DA_VM:8090"
+echo "Jenkins: http://$(hostname -I | awk '{print $1}'):8090"
+echo "Homologacao: http://$(hostname -I | awk '{print $1}'):8080"
+echo "Producao: http://$(hostname -I | awk '{print $1}'):8081"

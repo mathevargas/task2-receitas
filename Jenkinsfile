@@ -22,17 +22,6 @@ pipeline {
             }
         }
 
-        stage('Testes automatizados') {
-            steps {
-                sh './mvnw test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
-            }
-        }
-
         stage('Linter - Checkstyle') {
             steps {
                 sh './mvnw checkstyle:check'
@@ -42,6 +31,29 @@ pipeline {
         stage('Mess Detector - PMD') {
             steps {
                 sh './mvnw pmd:check'
+            }
+        }
+
+        stage('Subir Banco de Teste') {
+            steps {
+                sh './scripts/start-test-db.sh'
+            }
+        }
+
+        stage('Testes automatizados') {
+            environment {
+                SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/receitas_test'
+                SPRING_DATASOURCE_USERNAME = 'postgres'
+                SPRING_DATASOURCE_PASSWORD = 'Postgres'
+                SPRING_JPA_HIBERNATE_DDL_AUTO = 'none'
+            }
+            steps {
+                sh './mvnw test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
             }
         }
 

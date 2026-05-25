@@ -1,4 +1,22 @@
 services:
+  db-test:
+    image: postgres:17
+    container_name: db-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: receitas_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d receitas_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   db-homolog:
     image: postgres:17
     container_name: db-homolog
@@ -90,5 +108,6 @@ volumes:
   pgdata-prod:
 
 networks:
+  test-network:
   homolog-network:
   prod-network:

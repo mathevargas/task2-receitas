@@ -26,7 +26,7 @@ resource "null_resource" "prepare_vm" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/bootstrap-vm.sh",
-      "sudo /tmp/bootstrap-vm.sh"
+      "sudo JENKINS_ADMIN_USER_B64='${base64encode(var.jenkins_admin_user)}' JENKINS_ADMIN_PASSWORD_B64='${base64encode(var.jenkins_admin_password)}' /tmp/bootstrap-vm.sh"
     ]
   }
 }

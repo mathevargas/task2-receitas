@@ -87,7 +87,19 @@ echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
   /etc/apt/sources.list.d/jenkins.list > /dev/null
 
 apt update -y
+
+echo "Impedindo inicializacao automatica do Jenkins durante o apt install..."
+cat > /usr/sbin/policy-rc.d <<EOF
+#!/bin/sh
+exit 101
+EOF
+chmod +x /usr/sbin/policy-rc.d
+trap 'rm -f /usr/sbin/policy-rc.d' EXIT
+
 apt install -y jenkins
+
+rm -f /usr/sbin/policy-rc.d
+trap - EXIT
 
 echo "Configurando Jenkins para porta 8090 e desativando wizard inicial..."
 systemctl stop jenkins || true
@@ -145,18 +157,22 @@ JENKINS_CLI="/tmp/jenkins-cli.jar"
 curl -sSf http://localhost:8090/jnlpJars/jenkins-cli.jar -o "$JENKINS_CLI"
 
 echo "Instalando plugins principais do Jenkins..."
-java -jar "$JENKINS_CLI" \
-  -s http://localhost:8090/ \
-  -auth "$JENKINS_ADMIN_USER:$JENKINS_ADMIN_PASSWORD" \
-  install-plugin \
-  git \
-  workflow-aggregator \
-  pipeline-stage-view \
-  credentials \
-  credentials-binding \
-  junit \
-  docker-workflow \
-  -deploy
+if ! java -jar "$JENKINS_CLI" \
+    -s http://localhost:8090/ \
+    -auth "$JENKINS_ADMIN_USER:$JENKINS_ADMIN_PASSWORD" \
+    install-plugin \
+    git \
+    workflow-aggregator \
+    pipeline-stage-view \
+    credentials \
+    credentials-binding \
+    junit \
+    docker-workflow \
+    -deploy; then
+  echo "Falha ao instalar plugins principais do Jenkins. Verifique conectividade, credenciais e logs do Jenkins."
+  systemctl status jenkins --no-pager || true
+  exit 1
+fi
 
 echo "Reiniciando Jenkins apos instalacao dos plugins..."
 rm -f /var/lib/jenkins/init.groovy.d/01-create-admin-user.groovy

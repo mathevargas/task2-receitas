@@ -15,7 +15,10 @@ resource "null_resource" "prepare_vm" {
     host     = var.vm_host
     user     = var.vm_user
     password = var.vm_password
+    agent    = false
     timeout  = "15m"
+
+    script_path = "/tmp/terraform_%RAND%.sh"
   }
 
   provisioner "remote-exec" {

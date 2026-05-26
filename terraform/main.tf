@@ -15,16 +15,14 @@ resource "null_resource" "prepare_vm" {
     host     = var.vm_host
     user     = var.vm_user
     password = var.vm_password
-    timeout  = "5m"
-  }
-
-  provisioner "file" {
-    source      = "scripts/bootstrap-vm.sh"
-    destination = "/tmp/bootstrap-vm.sh"
+    timeout  = "15m"
   }
 
   provisioner "remote-exec" {
     inline = [
+      "sudo apt update -y",
+      "sudo apt install -y curl ca-certificates",
+      "curl -fsSL -o /tmp/bootstrap-vm.sh https://raw.githubusercontent.com/mathevargas/task2-receitas/main/terraform/scripts/bootstrap-vm.sh",
       "chmod +x /tmp/bootstrap-vm.sh",
       "sudo JENKINS_ADMIN_USER_B64='${base64encode(var.jenkins_admin_user)}' JENKINS_ADMIN_PASSWORD_B64='${base64encode(var.jenkins_admin_password)}' /tmp/bootstrap-vm.sh"
     ]

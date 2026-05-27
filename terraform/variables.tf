@@ -16,6 +16,12 @@ variable "vm_password" {
   sensitive   = true
 }
 
+variable "ssh_private_key_path" {
+  description = "Caminho local da chave privada SSH usada pelo Terraform"
+  type        = string
+  sensitive   = true
+}
+
 variable "jenkins_admin_user" {
   description = "Usuario administrador inicial do Jenkins"
   type        = string

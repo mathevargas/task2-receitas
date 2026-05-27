@@ -14,7 +14,7 @@ resource "null_resource" "prepare_vm" {
     type     = "ssh"
     host     = var.vm_host
     user     = var.vm_user
-    password = var.vm_password
+    private_key = file(var.ssh_private_key_path)
     agent    = false
     timeout  = "15m"
 

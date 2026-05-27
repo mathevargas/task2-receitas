@@ -35,9 +35,12 @@ build/
 *.log
 
 .env
+.ssh/
 
 .terraform/
 terraform/.terraform/
+terraform/.ssh/
+terraform/task2_receitas_terraform
 
 *.tfstate
 *.tfstate.*

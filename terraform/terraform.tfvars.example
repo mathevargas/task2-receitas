@@ -1,4 +1,5 @@
 vm_password            = "SENHA_DA_VM"
+ssh_private_key_path   = "C:/Users/SEU_USUARIO/.ssh/task2_receitas_terraform"
 jenkins_admin_user     = "admin"
 jenkins_admin_password = "SENHA_DO_JENKINS"
 email_app              = "EMAIL_DO_APP"

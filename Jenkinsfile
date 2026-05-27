@@ -42,6 +42,12 @@ pipeline {
                 SPRING_JPA_HIBERNATE_DDL_AUTO = 'none'
             }
             steps {
+                sh '''
+                    ./mvnw flyway:migrate \
+                        -Dflyway.url=jdbc:postgresql://db-test:5432/receitas_test \
+                        -Dflyway.user=postgres \
+                        -Dflyway.password=Postgres
+                '''
                 sh './mvnw test'
             }
             post {

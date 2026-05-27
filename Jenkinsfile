@@ -7,13 +7,13 @@ pipeline {
     }
 
     stages {
-        stage('Checkout / Git Pull') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Preparar permissões') {
+        stage('Preparar ambiente') {
             steps {
                 sh '''
                     chmod +x mvnw
@@ -22,27 +22,21 @@ pipeline {
             }
         }
 
-        stage('Linter - Checkstyle') {
+        stage('Checkstyle') {
             steps {
                 sh './mvnw checkstyle:check'
             }
         }
 
-        stage('Mess Detector - PMD') {
+        stage('PMD') {
             steps {
                 sh './mvnw pmd:check'
             }
         }
 
-        stage('Subir Banco de Teste') {
-            steps {
-                sh './scripts/start-test-db.sh'
-            }
-        }
-
         stage('Testes automatizados') {
             environment {
-                SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5433/receitas_test'
+                SPRING_DATASOURCE_URL = 'jdbc:postgresql://db-test:5432/receitas_test'
                 SPRING_DATASOURCE_USERNAME = 'postgres'
                 SPRING_DATASOURCE_PASSWORD = 'Postgres'
                 SPRING_JPA_HIBERNATE_DDL_AUTO = 'none'
@@ -63,7 +57,13 @@ pipeline {
             }
         }
 
-        stage('Deploy Homologação') {
+        stage('Aprovar Homologacao') {
+            steps {
+                input message: 'Integracao aprovada. Deseja subir ou atualizar Homologacao?', ok: 'Deploy Homologacao'
+            }
+        }
+
+        stage('Deploy Homologacao') {
             steps {
                 withCredentials([
                     string(credentialsId: 'EMAIL_APP', variable: 'EMAIL'),
@@ -74,13 +74,13 @@ pipeline {
             }
         }
 
-        stage('Aprovação Produção') {
+        stage('Aprovar Producao') {
             steps {
-                input message: 'Homologação aprovada? Deseja atualizar Produção?', ok: 'Aprovar Produção'
+                input message: 'Homologacao validada. Deseja subir ou atualizar Producao?', ok: 'Deploy Producao'
             }
         }
 
-        stage('Deploy Produção') {
+        stage('Deploy Producao') {
             steps {
                 withCredentials([
                     string(credentialsId: 'EMAIL_APP', variable: 'EMAIL'),
@@ -102,7 +102,7 @@ pipeline {
         }
 
         always {
-            echo 'Execução finalizada.'
+            echo 'Execucao finalizada.'
         }
     }
 }

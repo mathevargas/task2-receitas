@@ -1,8 +1,38 @@
 services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: jenkins/Dockerfile
+    image: task2-receitas-jenkins:latest
+    container_name: jenkins
+    restart: unless-stopped
+    user: root
+    environment:
+      CASC_JENKINS_CONFIG: /usr/share/jenkins/ref/casc.yaml
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-${jenkins_admin_password:?jenkins_admin_password obrigatoria}}
+      EMAIL_APP: ${EMAIL_APP:-${email_app:?email_app obrigatoria}}
+      SENHA_EMAIL_APP: ${SENHA_EMAIL_APP:-${senha_email_app:?senha_email_app obrigatoria}}
+    ports:
+      - "8090:8080"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks:
+      - integration-network
+    profiles:
+      - integration
+
   db-test:
     image: postgres:17
     container_name: db-test
     restart: unless-stopped
+    profiles:
+      - integration
     environment:
       POSTGRES_DB: receitas_test
       POSTGRES_USER: postgres
@@ -10,7 +40,7 @@ services:
     ports:
       - "5433:5432"
     networks:
-      - test-network
+      - integration-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d receitas_test"]
       interval: 10s
@@ -21,6 +51,8 @@ services:
     image: postgres:17
     container_name: db-homolog
     restart: unless-stopped
+    profiles:
+      - homolog
     environment:
       POSTGRES_DB: receitas_homolog
       POSTGRES_USER: postgres
@@ -42,6 +74,8 @@ services:
     image: task2-receitas:latest
     container_name: app-homolog
     restart: unless-stopped
+    profiles:
+      - homolog
     depends_on:
       db-homolog:
         condition: service_healthy
@@ -64,6 +98,8 @@ services:
     image: postgres:17
     container_name: db-prod
     restart: unless-stopped
+    profiles:
+      - prod
     environment:
       POSTGRES_DB: receitas_prod
       POSTGRES_USER: postgres
@@ -85,6 +121,8 @@ services:
     image: task2-receitas:latest
     container_name: app-prod
     restart: unless-stopped
+    profiles:
+      - prod
     depends_on:
       db-prod:
         condition: service_healthy
@@ -104,10 +142,11 @@ services:
       - prod-network
 
 volumes:
+  jenkins-home:
   pgdata-homolog:
   pgdata-prod:
 
 networks:
-  test-network:
+  integration-network:
   homolog-network:
   prod-network:

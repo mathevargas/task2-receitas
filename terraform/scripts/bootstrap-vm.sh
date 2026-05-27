@@ -2,60 +2,45 @@
 
 set -e
 
+PROJECT_DIR="/home/univates/task2-receitas"
+REPOSITORY_URL="https://github.com/mathevargas/task2-receitas.git"
+
+decode_b64_var() {
+  local source_value="$1"
+  printf "%s" "$source_value" | base64 -d
+}
+
 if [ -z "${JENKINS_ADMIN_USER:-}" ] && [ -n "${JENKINS_ADMIN_USER_B64:-}" ]; then
-  JENKINS_ADMIN_USER=$(printf "%s" "$JENKINS_ADMIN_USER_B64" | base64 -d)
+  JENKINS_ADMIN_USER=$(decode_b64_var "$JENKINS_ADMIN_USER_B64")
 fi
 
 if [ -z "${JENKINS_ADMIN_PASSWORD:-}" ] && [ -n "${JENKINS_ADMIN_PASSWORD_B64:-}" ]; then
-  JENKINS_ADMIN_PASSWORD=$(printf "%s" "$JENKINS_ADMIN_PASSWORD_B64" | base64 -d)
+  JENKINS_ADMIN_PASSWORD=$(decode_b64_var "$JENKINS_ADMIN_PASSWORD_B64")
 fi
 
-if [ -z "${JENKINS_ADMIN_USER:-}" ] || [ -z "${JENKINS_ADMIN_PASSWORD:-}" ]; then
-  echo "JENKINS_ADMIN_USER e JENKINS_ADMIN_PASSWORD sao obrigatorios."
-  exit 1
+if [ -z "${EMAIL_APP:-}" ] && [ -n "${EMAIL_APP_B64:-}" ]; then
+  EMAIL_APP=$(decode_b64_var "$EMAIL_APP_B64")
 fi
 
-groovy_escape() {
-  printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g"
-}
+if [ -z "${SENHA_EMAIL_APP:-}" ] && [ -n "${SENHA_EMAIL_APP_B64:-}" ]; then
+  SENHA_EMAIL_APP=$(decode_b64_var "$SENHA_EMAIL_APP_B64")
+fi
 
-wait_for_jenkins() {
-  echo "Aguardando Jenkins responder na porta 8090..."
-
-  for i in {1..60}; do
-    if curl -sSf http://localhost:8090/login >/dev/null 2>&1; then
-      echo "Jenkins esta respondendo."
-      return 0
-    fi
-
-    echo "Jenkins ainda nao esta pronto. Tentativa $i/60..."
-    sleep 5
-  done
-
-  echo "Jenkins nao respondeu dentro do tempo esperado."
-  systemctl status jenkins --no-pager || true
+if [ -z "${JENKINS_ADMIN_USER:-}" ] \
+  || [ -z "${JENKINS_ADMIN_PASSWORD:-}" ] \
+  || [ -z "${EMAIL_APP:-}" ] \
+  || [ -z "${SENHA_EMAIL_APP:-}" ]; then
+  echo "JENKINS_ADMIN_USER, JENKINS_ADMIN_PASSWORD, EMAIL_APP e SENHA_EMAIL_APP sao obrigatorios."
   exit 1
-}
-
-echo "Limpando configuracoes antigas do repositorio Jenkins, se existirem..."
-rm -f /usr/share/keyrings/jenkins-keyring.asc
-rm -f /etc/apt/sources.list.d/jenkins.list
-rm -f /etc/apt/trusted.gpg.d/jenkins*.gpg
+fi
 
 echo "Atualizando pacotes da VM..."
 apt update -y
-apt upgrade -y
 
-echo "Instalando pacotes basicos..."
-apt install -y ca-certificates curl gnupg git unzip fontconfig software-properties-common apt-transport-https
+echo "Instalando dependencias basicas..."
+apt install -y ca-certificates curl gnupg git
 
-echo "Instalando Java 21..."
-apt install -y openjdk-21-jdk
-
-echo "Instalando Maven..."
-apt install -y maven
-
-echo "Instalando Docker..."
+echo "Instalando Docker e Docker Compose plugin, se necessario..."
 install -m 0755 -d /etc/apt/keyrings
 
 if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
@@ -75,128 +60,61 @@ echo "Habilitando Docker..."
 systemctl enable docker
 systemctl start docker
 
-echo "Instalando Jenkins..."
-rm -f /usr/share/keyrings/jenkins-keyring.asc
-rm -f /etc/apt/sources.list.d/jenkins.list
-
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | tee \
-  /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-  https://pkg.jenkins.io/debian-stable binary/ | tee \
-  /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-apt update -y
-
-echo "Impedindo inicializacao automatica do Jenkins durante o apt install..."
-cat > /usr/sbin/policy-rc.d <<EOF
-#!/bin/sh
-exit 101
-EOF
-chmod +x /usr/sbin/policy-rc.d
-trap 'rm -f /usr/sbin/policy-rc.d' EXIT
-
-apt install -y jenkins
-
-rm -f /usr/sbin/policy-rc.d
-trap - EXIT
-
-echo "Configurando Jenkins para porta 8090 e desativando wizard inicial..."
-systemctl stop jenkins || true
-
-mkdir -p /etc/systemd/system/jenkins.service.d
-cat > /etc/systemd/system/jenkins.service.d/override.conf <<EOF
-[Service]
-Environment="JENKINS_PORT=8090"
-Environment="JAVA_OPTS=-Djenkins.install.runSetupWizard=false"
-EOF
-
-echo "Criando usuario administrador inicial do Jenkins..."
-mkdir -p /var/lib/jenkins/init.groovy.d
-
-JENKINS_ADMIN_USER_ESCAPED=$(groovy_escape "$JENKINS_ADMIN_USER")
-JENKINS_ADMIN_PASSWORD_ESCAPED=$(groovy_escape "$JENKINS_ADMIN_PASSWORD")
-
-cat > /var/lib/jenkins/init.groovy.d/01-create-admin-user.groovy <<EOF
-import hudson.security.FullControlOnceLoggedInAuthorizationStrategy
-import hudson.security.HudsonPrivateSecurityRealm
-import jenkins.model.Jenkins
-
-def instance = Jenkins.get()
-def realm = new HudsonPrivateSecurityRealm(false)
-
-if (realm.getUser('${JENKINS_ADMIN_USER_ESCAPED}') == null) {
-    realm.createAccount('${JENKINS_ADMIN_USER_ESCAPED}', '${JENKINS_ADMIN_PASSWORD_ESCAPED}')
-}
-
-def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
-strategy.setAllowAnonymousRead(false)
-
-instance.setSecurityRealm(realm)
-instance.setAuthorizationStrategy(strategy)
-instance.save()
-EOF
-
-chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d
-
-echo "Adicionando usuario jenkins ao grupo docker..."
-usermod -aG docker jenkins || true
-
-echo "Adicionando usuario atual ao grupo docker, se existir..."
-if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
-  usermod -aG docker "$SUDO_USER"
+echo "Adicionando usuario univates ao grupo docker, se existir..."
+if id univates >/dev/null 2>&1; then
+  usermod -aG docker univates
 fi
 
-systemctl daemon-reload
-systemctl enable jenkins
-systemctl restart jenkins
-wait_for_jenkins
-
-echo "Instalando Jenkins CLI..."
-JENKINS_CLI="/tmp/jenkins-cli.jar"
-curl -sSf http://localhost:8090/jnlpJars/jenkins-cli.jar -o "$JENKINS_CLI"
-
-echo "Instalando plugins principais do Jenkins..."
-if ! java -jar "$JENKINS_CLI" \
-    -s http://localhost:8090/ \
-    -auth "$JENKINS_ADMIN_USER:$JENKINS_ADMIN_PASSWORD" \
-    install-plugin \
-    git \
-    workflow-aggregator \
-    pipeline-stage-view \
-    credentials \
-    credentials-binding \
-    junit \
-    docker-workflow \
-    -deploy; then
-  echo "Falha ao instalar plugins principais do Jenkins. Verifique conectividade, credenciais e logs do Jenkins."
-  systemctl status jenkins --no-pager || true
+echo "Preparando repositorio do projeto sem apagar a pasta existente..."
+if [ -d "$PROJECT_DIR/.git" ]; then
+  git -C "$PROJECT_DIR" fetch origin main
+  git -C "$PROJECT_DIR" checkout main
+  git -C "$PROJECT_DIR" pull --ff-only origin main
+elif [ -d "$PROJECT_DIR" ]; then
+  echo "A pasta $PROJECT_DIR ja existe, mas nao e um repositorio Git. Nao vou apagar essa pasta."
+  echo "Ajuste a pasta manualmente ou mova o conteudo antigo antes de rodar o bootstrap novamente."
   exit 1
+else
+  git clone "$REPOSITORY_URL" "$PROJECT_DIR"
 fi
 
-echo "Reiniciando Jenkins apos instalacao dos plugins..."
-rm -f /var/lib/jenkins/init.groovy.d/01-create-admin-user.groovy
-systemctl restart jenkins
-wait_for_jenkins
+if id univates >/dev/null 2>&1; then
+  chown -R univates:univates "$PROJECT_DIR"
+fi
+
+echo "Gerando .env local para Docker Compose na VM..."
+cat > "$PROJECT_DIR/.env" <<EOF
+JENKINS_ADMIN_USER=${JENKINS_ADMIN_USER}
+JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD}
+EMAIL_APP=${EMAIL_APP}
+SENHA_EMAIL_APP=${SENHA_EMAIL_APP}
+EOF
+chmod 600 "$PROJECT_DIR/.env"
+
+if id univates >/dev/null 2>&1; then
+  chown univates:univates "$PROJECT_DIR/.env"
+fi
+
+echo "Subindo somente ambiente de integracao: Jenkins e db-test..."
+cd "$PROJECT_DIR"
+docker compose --profile integration up -d --build jenkins db-test
+
+echo "Status dos containers de integracao:"
+docker compose --profile integration ps jenkins db-test
 
 echo "Liberando portas no firewall, se UFW estiver ativo..."
 if command -v ufw >/dev/null 2>&1; then
+  ufw allow 8090 || true
   ufw allow 8080 || true
   ufw allow 8081 || true
-  ufw allow 8090 || true
 fi
 
 echo "Versoes instaladas:"
 git --version
-java -version
-mvn -version
 docker --version
 docker compose version
 
-echo "Status Jenkins:"
-systemctl status jenkins --no-pager || true
-
-echo "Bootstrap da VM concluido."
-echo "Jenkins: http://$(hostname -I | awk '{print $1}'):8090"
-echo "Homologacao: http://$(hostname -I | awk '{print $1}'):8080"
-echo "Producao: http://$(hostname -I | awk '{print $1}'):8081"
+echo "Bootstrap concluido."
+echo "Jenkins: http://177.44.248.40:8090"
+echo "Homologacao sera iniciada pelo botao da pipeline: http://177.44.248.40:8080"
+echo "Producao sera iniciada pelo botao da pipeline: http://177.44.248.40:8081"

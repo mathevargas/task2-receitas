@@ -1,0 +1,48 @@
+jenkins:
+  systemMessage: "Jenkins automatizado do projeto task2-receitas."
+  numExecutors: 2
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "EMAIL_APP"
+              description: "E-mail usado pela aplicacao task2-receitas"
+              secret: "${EMAIL_APP}"
+          - string:
+              scope: GLOBAL
+              id: "SENHA_EMAIL_APP"
+              description: "Senha de app do e-mail usado pela aplicacao task2-receitas"
+              secret: "${SENHA_EMAIL_APP}"
+
+jobs:
+  - script: >
+      pipelineJob('task2-receitas-pipeline') {
+        description('Pipeline CI/CD automatizada do projeto task2-receitas')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/mathevargas/task2-receitas.git')
+                }
+                branches('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

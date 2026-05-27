@@ -26,3 +26,15 @@ variable "jenkins_admin_password" {
   type        = string
   sensitive   = true
 }
+
+variable "email_app" {
+  description = "E-mail usado pela aplicacao"
+  type        = string
+  sensitive   = true
+}
+
+variable "senha_email_app" {
+  description = "Senha de app do e-mail usado pela aplicacao"
+  type        = string
+  sensitive   = true
+}

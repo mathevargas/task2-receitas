@@ -1,5 +1,5 @@
 jenkins:
-  systemMessage: "Jenkins automatizado do projeto task2-receitas."
+  systemMessage: "Jenkins automatizado - Sistema de Gestão de Receitas."
   numExecutors: 2
   mode: NORMAL
   securityRealm:
@@ -29,8 +29,8 @@ credentials:
 
 jobs:
   - script: >
-      pipelineJob('task2-receitas-pipeline') {
-        description('Pipeline CI/CD automatizada do projeto task2-receitas')
+      pipelineJob('Sistema de Gestão de Receitas') {
+        description('Pipeline CI/CD do Projeto Final - Sistema de Gestão de Receitas')
         definition {
           cpsScm {
             scm {

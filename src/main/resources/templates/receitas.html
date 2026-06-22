@@ -144,7 +144,7 @@
                 <td th:text="${r.descricao}"></td>
                 <td th:text="${#temporals.format(r.dataRegistro, 'dd/MM/yyyy')}"></td>
                 <td th:text="'R$ ' + ${#numbers.formatDecimal(r.custo, 1, 'POINT', 2, 'COMMA')}"></td>
-                <td th:text="${r.tipoReceita}"></td>
+                <td th:text="${#strings.capitalize(#strings.toLowerCase(r.tipoReceita))}"></td>
                 <td class="actions">
                     <a th:href="@{'/receitas/editar/' + ${r.id}}" class="btn-edit">Editar</a>
                     <a th:href="@{'/receitas/excluir/' + ${r.id}}" class="btn-delete">Excluir</a>

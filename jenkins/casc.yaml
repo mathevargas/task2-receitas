@@ -29,7 +29,8 @@ credentials:
 
 jobs:
   - script: >
-      pipelineJob('Sistema de Gestão de Receitas') {
+      pipelineJob('sistema-gestao-receitas') {
+        displayName('Sistema de Gestão de Receitas')
         description('Pipeline CI/CD do Projeto Final - Sistema de Gestão de Receitas')
         definition {
           cpsScm {
